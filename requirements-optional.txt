@@ -1,0 +1,3 @@
+# Optional PDF text extraction. The service falls back to pdftotext when this
+# package is unavailable.
+pypdf>=5,<7

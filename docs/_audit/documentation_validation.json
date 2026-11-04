@@ -1,0 +1,14 @@
+{
+  "runtime_sources_unchanged": {
+    "app.py": true,
+    "ffdc_chat.py": true,
+    "workspace_analysis.py": true,
+    "workspace_ui.py": true,
+    "ffdc_config.py": true,
+    "ffdc_jobs.py": true
+  },
+  "callables_checked": 512,
+  "mermaid_blocks": 5,
+  "checks": "Markdown fence balance, table column counts, local file links, source line ranges, function coverage, runtime source hashes, API-key pattern check. Mermaid blocks are source-checked, not renderer-certified.",
+  "failures": []
+}

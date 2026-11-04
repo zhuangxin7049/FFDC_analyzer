@@ -1,0 +1,3 @@
+# The FFDC Analyzer runtime uses Python's standard library.
+# Install the optional packages below only when the corresponding feature is
+# enabled on the server; see requirements-optional.txt.

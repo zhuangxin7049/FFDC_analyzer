@@ -1,0 +1,23 @@
+[Unit]
+Description=FFDC Analyzer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ffdc-analyzer
+Group=ffdc-analyzer
+WorkingDirectory=/opt/ffdc-analyzer
+EnvironmentFile=/etc/ffdc-analyzer/ffdc-analyzer.env
+ExecStart=/usr/bin/python3 /opt/ffdc-analyzer/app.py
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/ffdc-analyzer/uploads /opt/ffdc-analyzer/reports /opt/ffdc-analyzer/ffdc_cache /opt/ffdc-analyzer/jira_ocr_cache /opt/ffdc-analyzer/jira_attachment_cache /opt/ffdc-analyzer/jira_monitor_jobs /opt/ffdc-analyzer/current_status_summary /opt/ffdc-analyzer/domain_drafts /opt/ffdc-analyzer/usage_stats.json
+
+[Install]
+WantedBy=multi-user.target

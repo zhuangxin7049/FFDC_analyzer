@@ -1,0 +1,565 @@
+AV1 / AV2 资料学习记录
+日期：2026-10-16
+
+学习范围：40 份 PDF，39 份独立内容，1217 页；20 页扫描认证资料已做 OCR。
+全部 PDF 建立逐页检索；重点技术章节和部分关键表格已核对。索引不等于所有字段已完成解码验证。
+四个 STP 机械模型仅建立清单，不作为故障日志解析规范。
+
+最重要的适用边界：
+1. 460 历史样本 MFG0 三个配置区都能读到 SAS5032W / 460-16e / PCIe Gen5，后续按 AV2 IOC 范围选择规则。
+2. AV1/AV2、RoC/IOC、运行模式、FW/CLI/StoreLib 版本要联合确定；压缩包名不是适用性依据。
+3. 物理卡、PF/IOC、OS 控制器、管理视图、OS 可见设备分别处理。
+4. DSN（物理槽位号）、SlotIndex、CEI 和 Persistent ID 不可直接等同。
+5. StoreLib、传输、MPI、DCMD、SCSI/NVMe 的错误码，以及 Boot/PEL/FaultCode 均需命名空间。
+
+下一轮解析改进优先级：
+1. Identify SAS5032W/AV2 and RoC versus IOC before applying AV1 profiles/cache assumptions
+2. Separate physical card / Supervisor / Non-supervisor / OS controller visibility
+3. Keep SlotIndex/CEI/DSN distinct; bound existing range-slot conflict inference
+4. Parse status layers and population/length validity before numeric decoding
+5. Keep event namespaces, number bases and boot sequences explicit
+
+已提炼的规则（每条均为学习候选，需另行实现/验证）：
+
+GEN-01 [generation]
+控制器芯片、RoC/IOC、板卡和运行模式共同选择规则；AV1/AV2 压缩包名不是适用性判断。
+工具含义：给 operating_mode 和后续字段解码增加代际适用条件。
+出处：AV2-038 PDF页 4,5,6；AV1-021 PDF页 7,8
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+GEN-02 [AV2 RoC]
+AV2 RAID 使用集成缓存；不能沿用 AV1 RAID 必须有外置 DDR 的硬件预期。
+工具含义：缺少外置 DDR 不能直接生成 AV2 硬件故障。
+出处：AV2-038 PDF页 5；AV2-030 PDF页 1
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+GEN-03 [AV2 RoC versus IOC]
+AV2 RoC 的 SSD/介质限制不能套到 SAS5032W IOC/HBA；文档中 IOC 支持 SAS/SATA HDD。
+工具含义：按芯片角色检查支持介质，避免把 HBA 上的 SATA/HDD 判为不支持。
+出处：AV2-038 PDF页 6,13
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+GEN-04 [profile]
+AV1 eHBA 的 IT/FeatureHBA/9620-EVP profile 表不是所有 MPI3 或 AV2 产品的通用定义。
+工具含义：先识别芯片代际，再以显式运行模式核对 profile。
+出处：AV1-021 PDF页 7,8；AV2-038 PDF页 5
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+MPF-01 [AV2]
+多个 PCIe/MPI/IOC 实例可能属于一张物理卡；使用 Supervisor、FunctionID、序列号和映射关系关联。
+工具含义：物理卡、PF、OS 控制器实例分层，避免重复计数。
+出处：AV2-038 PDF页 14；AV2-036 PDF页 9,10
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+MPF-02 [AV2]
+PF0 Supervisor 保持启用，配置管理、SES、OOB 和固件更新能力与 Non-supervisor 不同。00B3/00B5/00B8 在此文档分别表示 Supervisor/Non-supervisor/桥。
+工具含义：按 PF 角色解释缺少管理数据；不能把桥设备统计为存储卡。
+出处：AV2-038 PDF页 8；AV2-036 PDF页 9
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+MPF-03 [AV2]
+管理栈可见与 OS 可见不同；未分配或映射到其他 PF/VM 的设备可能不在本 OS 出现。
+工具含义：缺盘排查先看 PF map、Mgmt only、Exposed to Host，再判断物理链路。
+出处：AV2-038 PDF页 13；AV2-036 PDF页 8,9
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+MPF-04 [AV2 firmware/version]
+文档描述默认 4 PF，架构最多 64 endpoint；平台总线资源和固件 profile 限制需要另行核对。
+工具含义：区分默认值、理论能力、实际启用数和 OS 可见数。
+出处：AV2-038 PDF页 7,12
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+MPF-05 [AV2 version conflict]
+FW-Diff v1.1 明确删除 PF set state=on/off 命令，且正文写运行时启停 NSPF 不支持；另一白皮书仍给出这些命令。
+工具含义：不能从较旧示例生成可执行启停建议；以对应 FW 能力和当前文档版本为准。
+出处：AV2-038 PDF页 8,18；AV2-036 PDF页 9
+限制：存在跨文档/版本差异，不把示例视为当前控制器支持证明。
+
+SLOT-01 [enclosure topology]
+Device Slot Number、SlotIndex 和 CEI 不是同一字段。非连续 DSN 示例中 DSN=16 对应 Persistent ID=X+4，而不是 X+16。
+工具含义：现有 range_slot=first_slot+(pid-first_id) 只能作有条件的索引候选；不能普遍与物理 slotNumber 比较后判冲突。
+出处：AV1-023 PDF页 5,6
+限制：2021 AV1 规范与 2025 概览需按实际拓扑/固件核对；优先保留显式槽位证据。
+
+SLOT-02 [AV1 enclosure]
+相同 ELI 的多个 expander 被当作同一 enclosure；多路径必须报告相同 ELI。
+工具含义：将 expander、路径、enclosure、物理盘分开，避免多路径重复盘和重复机箱。
+出处：AV1-023 PDF页 5,6
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+SLOT-03 [AV1 enclosure]
+机箱需正确实现其声明的 SES 页，槽位映射要求 SES 0x2、0xA；CEI/FECEI/NECEI 和 wide-port DSN 必须一致。
+工具含义：为拓扑/发现错误提供具体补证方向；单个错误不直接证明背板或线缆损坏。
+出处：AV1-023 PDF页 6,7,8
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+ID-01 [persistent identity]
+Persistent ID 的作用域涉及控制器端口、enclosure 和槽位；换端口可改变 ID，历史表会保留旧条目。
+工具含义：跨捕获使用序列号/WWN与上下文；保留 old/missing 记录但不算当前故障。
+出处：AV1-021 PDF页 16
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+ID-02 [identity namespaces]
+PCIe VPD 的 SN/PN/MN、enclosure ELI、SCSI VPD、PD ID、MPF FunctionID 和 MCTP EID 必须分开命名。
+工具含义：避免把卡序列号、盘 WWN、机箱 ID 与 OOB 端点号互相拼接。
+出处：AV1-019 PDF页 4,5,6；AV1-026 PDF页 12,47；AV2-039 PDF页 142,205
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+SNAP-01 [AV1 trigger/context]
+ONDEMAND、RUNTIME、INIT、MPI soft reset、Controller Fault、BootLog 的含义不同；RUNTIME 也可能是不含固件 fault 的功能失败。
+工具含义：采集触发原因与控制器崩溃结论分开；不能由 CrashDump 文件名判断故障。
+出处：AV1-022 PDF页 5,6
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+SNAP-02 [AV1 collection coverage]
+SnapDump 模块由触发条件和 personality 决定，不是所有模式、每次捕获都提供所有文件。
+工具含义：覆盖率结合可采集能力与 bitmap，区分未请求、不适用、采集失败和未解码。
+出处：AV1-022 PDF页 6,7,9,10；AV1-026 PDF页 75,78
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+SNAP-03 [timestamp and collection]
+文件名可使用本地时间，未设置时间时可能是 0x 值；Driver RTT 可以通过 norttdump 不采集。
+工具含义：不能把文件名强制转换成绝对故障时间；RTT 缺失不必然是采集失败。
+出处：AV2-039 PDF页 121,122
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+SNAP-04 [AV1 versioned capture limits]
+2023 Debug 文档描述 ONDEMAND 冷却 10 分钟、host-boot 不支持及静态 fault 限制；DDR/SPI 预留空间不是解压后文本大小上限。
+工具含义：采集建议和文件大小判定必须带版本/模式条件，不能转成通用固定上传阈值。
+出处：AV1-022 PDF页 5,11
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+LOG-01 [AV2 persistence]
+AV2 的 TTY/RB 持续流向 NAND，pinned data 也流向 NAND；不能直接套用 AV1 DDR 日志保留/掉电逻辑。
+工具含义：区分当前启动、持久历史、日志轮转和真正丢失，重新设计缓存/掉电证据链。
+出处：AV2-038 PDF页 5
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+API-01 [MR8/SL8]
+先检查固件/应用 compatibility，再核对 buffer status、transfer length、populated 和 modifiable 位。零值可能是不支持或未填充。
+工具含义：解析导出的 API 结构时有效性先于数值；不把未填充零值当健康。
+出处：AV1-026 PDF页 8,9
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+API-02 [MR8 arrays/strings]
+MR8_ARRAY 使用返回的元素步长、实际/可用数量和逐项状态；字符字段可能是固定长、空格填充、非 NUL 结尾或二进制。
+工具含义：不能固定偏移读未知版本数组；区分可显示标识与二进制字符串。
+出处：AV1-026 PDF页 8,11,12,13
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+API-03 [MR8 sequence]
+Invalid Sequence Number 表示源状态过期，需重新获取相关源状态；不能直接判为介质故障。
+工具含义：归因到并发/状态一致性层，并保留完整命令上下文。
+出处：AV1-026 PDF页 14
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+ERR-01 [error namespaces]
+SLStatus、comStatus、IOCStatus/IOCLogInfo、DCMD、SCSI Sense 和 NVMe status 属于不同错误层；顶层返回码不是全部结果。
+工具含义：按错误层和结构有效性解码，避免相同数值套错字典。
+出处：AV1-029 PDF页 92,95,98,99,100；AV1-026 PDF页 36,37
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+ERR-02 [code dictionary limits]
+StoreLib API/OOB 表包含错误 offset，但完整 IOCStatus 仍引用 MPI 规范，完整事件码仍引用 Firmware Interface Manual。
+工具含义：先支持有名称/明确 base 的枚举；不能把 offset 当作完整错误码，也不能声称已有完整 FaultCode 字典。
+出处：AV1-029 PDF页 23,95,96,97,98,99,100
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+ERR-03 [specific recovery context]
+文档中的 OOB restore-factory-defaults 场景可进入 FaultCode 3FFD，需驱动复位恢复；没有该上下文时不能由 3FFD 单码确认同一原因。
+工具含义：将命令、host driver、controller state 和恢复结果串联，而非把 fault code 自动当硬件坏。
+出处：AV1-026 PDF页 45
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+OOB-01 [transport]
+同一控制器的多种 transport/EID 不是多张卡；库每次接收一个 EID，变更有 remove/add 回调。
+工具含义：关联端点变更、热插拔、重发现与 PF 角色，避免误报控制器丢失。
+出处：AV1-026 PDF页 47,48
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+OOB-02 [logging and capabilities]
+OOB 调试需要 SnapDump 与 storelib8debug.txt，进阶情况需 I2C/PCIe trace；OOB 不使用 host 侧 ini 配置方式。
+工具含义：根据 host/OOB 环境生成准确缺失证据清单，不建议无效配置路径。
+出处：AV1-026 PDF页 54；AV1-029 PDF页 26,27
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+EVT-01 [event history]
+使用 Newest/Oldest/Clear/Reboot/Shutdown/LastAcknowledged 序号区分历史范围；采集本身不是事件发生。
+工具含义：按启动和事件序号关联历史，时间缺失时不伪造统一时间线。
+出处：AV2-039 PDF页 97,98,101
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+EVT-02 [event namespace/severity]
+Boot/HII/PEL、事件码数值进制和文档版本需一起确认；源事件 severity 与当前健康判定分别保存。
+工具含义：不能把十六进制表项、十进制 PEL code 和 FaultCode 直接共用查表，也不能将 Informational 简化成无影响。
+出处：AV2-035 PDF页 169,170,171,172；AV2-039 PDF页 98,101
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+CLI-01 [StorCLI2 JSON]
+不是所有命令都支持 JSON；文档提示输出可包含重复 key/property。
+工具含义：未来 CLI 导入保留重复项和 controller/function 上下文，不能让 JSON 后值覆盖前值。
+出处：AV2-039 PDF页 13
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+LINK-01 [host versus backend]
+AV2 host guide明确每 lane 32 GT/s；host PCIe、backend NVMe 和 SAS 22.5/12/6 Gb/s 是不同链路。
+工具含义：优先实际链路能力/协商/配置证据；不从 backend 固件 enum 猜 host GT/s。
+出处：AV2-034 PDF页 8,9
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+LINK-02 [NVMe topology]
+NVMe x1/x2/x4 可以是预期直连设计，不是仅看到 x1/x2 就能判定降速故障。
+工具含义：结合预期布线、盘能力、端口模式及协商值判断。
+出处：AV2-033 PDF页 1,2,4；AV2-034 PDF页 9,10
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+PERF-01 [benchmark scope]
+性能受 NUMA、CPU、队列、盘数、I/O size、读写比例、cache policy 和拓扑共同约束；白皮书结果是特定配置测量。
+工具含义：性能分析给出瓶颈假设与补证，不能将广告 IOPS 或单一阈值当健康标准。
+出处：AV1-006 PDF页 18,20,36,40,66；AV2-031 PDF页 4；AV2-032 PDF页 4
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+PWR-01 [95xx/96xx only]
+Slot power requirement 是预算/启动门控，与实际耗电不同；未收到 SET_SLOT_POWER_LIMIT 时仍可继续 port enable。
+工具含义：不能仅由 power limit 消息缺失判故障；不能将 95xx/96xx 板卡瓦数套给 460/9700。
+出处：AV1-028 PDF页 1
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+CAP-01 [component identity]
+CVPM05/FBU345 组件数据和历史认证不是 AV2 CVPM33 的规格，也不直接定义固件低容量告警。
+工具含义：先匹配 FRU/型号，再解释容量、温度和缓存保护；名义/最小值分别保留。
+出处：AV1-007 PDF页 1；AV1-011 PDF页 5；AV2-034 PDF页 19
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+SEC-01 [SPDM generation/SKU]
+AV1 DeviceCert 与 AV2 SKU 可选 DeviceCert/AliasCert 的证书稳定性不同；正常固件更新可改变 AliasCert。
+工具含义：证书变化不直接判篡改；缺少参考测量及信任链时保留未验证。
+出处：AV1-027 PDF页 4；AV2-037 PDF页 4,5,12,13
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+SEC-02 [drive security]
+Key management 或 EKM 连接问题可能使安全盘 locked/foreign，不能直接归为介质坏。
+工具含义：将密钥可用性与盘介质状态分开；日志/UI 不暴露密钥内容。
+出处：AV1-024 PDF页 4；AV2-035 PDF页 172
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+HW-01 [qualification documents]
+机械图、STP、震动、认证与 MTBF 是设计/群体范围资料，不证明某一在线控制器的当前健康或剩余寿命。
+工具含义：用于识别/设计约束及背景，不生成未经验证的故障阈值。
+出处：AV1-015 PDF页 1；AV1-018 PDF页 2,3；AV1-020 PDF页 4
+限制：Validate against captured controller identity, firmware and exact raw fields before enabling a deterministic rule.
+
+文档差异和歧义：
+
+DOC-01 StorCLI2 文件名 UG101，正文封面为 UG102 v1.2 (2024-11-22)。版本取正文并保留原文件名。
+出处：AV2-039 PDF页 1
+
+DOC-02 AV2 包内 MR8_Utility_UG 实为 9600 时代 MR8-TM-SW-UG103 v1.1 (2022-10-11)。不能仅凭包名给其规则标 AV2。
+出处：AV2-035 PDF页 1,2,8
+
+DOC-03 PF 启停示例与 FW-Diff v1.1 存在差异，后者修订记录明确移除了 set state 命令。
+出处：AV2-036 PDF页 9；AV2-038 PDF页 8,18
+
+DOC-04 AV2 guide p8 同时写 Gen5 每 lane 32 GT/s 和 x8/x16 聚合 16/32 GB/s，聚合数据疑似旧值；不据此判带宽异常。
+出处：AV2-034 PDF页 8
+
+DOC-05 StoreLib8 p92 firmware failure 范围上界印成 0x4FFFFFFFF，超出 U32；AN105 p37 流程图给 0x4FFFFFFF。完整枚举仍需匹配头文件。
+出处：AV1-029 PDF页 92；AV1-026 PDF页 37
+
+DOC-06 2023 migration 文档的 LD 最大范围、SEP/enclosure 预留描述不能无条件覆盖用户先前提供的 2025 ordering 文档；按实际表和版本保留差异。
+出处：AV1-021 PDF页 16
+
+完整解码仍缺少的资料：
+- Matching Fusion-MPT MPI 3.x specification / IOCStatus and config-page layouts
+- Matching SAS4xxx/SAS5xxx Configuration Programming Guide and MFG-page definitions
+- Matching ROP / MegaRAID Firmware Interface Reference Manual and mr8.h/storelib8.h headers
+- Trusted binary trace decoder with matching firmware/string/symbol data; schematics for exact board lane mapping
+
+文档目录（版本取正文封面；包名仅记录来源）：
+
+AV1-001 001-9600-HWRAID5-LL-WP100.pdf
+页数：5；正文版本：未统一标注
+主题：9600 RAID5 latency case study; measured results depend on workload and test system.
+来源：AV1_Spec.zip::Spec/perf/9600-HWRAID5-LL-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/001-9600-HWRAID5-LL-WP100.pdf
+SHA256：3117825e0dd1eff2055e59f38cd6df69b6f8cbef2ce8e5ed9c090f356076a53b
+
+AV1-002 002-9600-Series-1MRAID5-WP100.pdf
+页数：7；正文版本：未统一标注
+主题：Samsung PM1653 and 9670W RAID5 benchmark; no universal health threshold.
+来源：AV1_Spec.zip::Spec/perf/9600-Series-1MRAID5-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/002-9600-Series-1MRAID5-WP100.pdf
+SHA256：7211fb51ad20542cd418203ff50290aca79593e6af72f9419acadea08e268c7a
+
+AV1-003 003-9600-Series-Perf-WP100.pdf
+页数：7；正文版本：未统一标注
+主题：9600 performance comparison; distinguish cached workloads, drive count and topology.
+来源：AV1_Spec.zip::Spec/perf/9600-Series-Perf-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/003-9600-Series-Perf-WP100.pdf
+SHA256：8c3b20af4316fcd35be91308893cbe70f79f90e0a9a378faf4de6cb8e99b4484
+
+AV1-004 004-NVMe-HW-RAID-WP100.pdf
+页数：9；正文版本：1.0
+主题：NVMe hardware RAID business analytics design and workload case study.
+来源：AV1_Spec.zip::Spec/perf/NVMe-HW-RAID-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/004-NVMe-HW-RAID-WP100.pdf
+SHA256：6f8936d632de8bea16928844cb6937979f46bc07c5c96f51d80af592b28fbadd
+
+AV1-005 005-SAS4xxx-LLStg-WP100.pdf
+页数：10；正文版本：1.0
+主题：Latency definitions, SSD RAID cache and application implications.
+来源：AV1_Spec.zip::Spec/perf/SAS4xxx-LLStg-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/005-SAS4xxx-LLStg-WP100.pdf
+SHA256：6a5f95622592d5e022da23678ed73b255fc6d733a052482c8997ee36c7f6578d
+
+AV1-006 006-TM-Perf-Tuning-UG102 (1).pdf
+页数：81；正文版本：1.2
+主题：NUMA, CPU, PCIe, queues, workloads, cache policies and bottleneck methodology.
+来源：AV1_Spec.zip::Spec/perf/TM-Perf-Tuning-UG102 (1).pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/006-TM-Perf-Tuning-UG102 (1).pdf
+SHA256：5158e641029d09d46ac3f060eb3c01189ff5aac8dc3525e4a1e1d8657894119f
+
+AV1-007 007-Broadcom CVPM05 FBU345 Data Sheet.pdf
+页数：2；正文版本：未统一标注
+主题：CVPM05/FBU345 component ratings, not CVPM33 or firmware alarm thresholds.
+来源：AV1_Spec.zip::Spec/supercap/Broadcom CVPM05 FBU345 Data Sheet.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/007-Broadcom CVPM05 FBU345 Data Sheet.pdf
+SHA256：848ae9ffb8be86cef66217f5ad449f7a569bfe9260a3f0dde115ce5074a658c4
+
+AV1-008 008-52864-00_C.pdf
+页数：1；正文版本：未统一标注
+主题：Supercapacitor holder drawing; not a SnapDump decoding specification.
+来源：AV1_Spec.zip::Spec/supercap/CVPM Clip STP File.zip::52864-00_C.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/008-52864-00_C.pdf
+SHA256：29b640135457928e288e493d72acef83769c6805519458f69aef9d0258fa4507
+
+AV1-009 009-FBU02-IATA-Sanmina.pdf
+页数：10；正文版本：未统一标注
+主题：Historical FBU02 transport certificates; OCR is only a search aid.
+来源：AV1_Spec.zip::Spec/supercap/SuperCaps Certifications.zip::SuperCaps Certifications/FBU02-IATA-Sanmina.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/009-FBU02-IATA-Sanmina.pdf
+SHA256：e1daecb38fe5b4fe1703b0a656c662cdd806c128383d7eb396114db435fbab0d
+
+AV1-010 010-FBU345-IATA-Sanmina.pdf
+页数：10；正文版本：未统一标注
+主题：Historical FBU345 transport certificates; source includes multiple transport contexts.
+来源：AV1_Spec.zip::Spec/supercap/SuperCaps Certifications.zip::SuperCaps Certifications/FBU345-IATA-Sanmina.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/010-FBU345-IATA-Sanmina.pdf
+SHA256：e1d1d023e56de08e6c53c8c7b9725bec7a04c9a712729ef013b91569b81b8a58
+
+AV1-011 011-Liberty_FBU345_FBU02_UL-Report-Update_ATL APL MH62170 1454303.pdf
+页数：5；正文版本：未统一标注
+主题：UL report update and nominal/minimum capacitor ratings; not current device health.
+来源：AV1_Spec.zip::Spec/supercap/SuperCaps Certifications.zip::SuperCaps Certifications/Liberty_FBU345_FBU02_UL-Report-Update_ATL APL MH62170 1454303.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/011-Liberty_FBU345_FBU02_UL-Report-Update_ATL APL MH62170 1454303.pdf
+SHA256：833873c44605244a14344e577f212ad775f7dfd272b0516b72e62991ab185fc9
+
+AV1-012 012-Liberty_FBU345_FBU02_UL-Report_ATL APL MH62170 1454303.pdf
+页数：19；正文版本：未统一标注
+主题：Component construction and UL conditions; not evidence of host-system certification.
+来源：AV1_Spec.zip::Spec/supercap/SuperCaps Certifications.zip::SuperCaps Certifications/Liberty_FBU345_FBU02_UL-Report_ATL APL MH62170 1454303.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/012-Liberty_FBU345_FBU02_UL-Report_ATL APL MH62170 1454303.pdf
+SHA256：da2c3d579c08c9e2132281dc058268a93960b1dd104818102a16ca23a8e00ab1
+
+AV1-013 013-MH62170-20170727-CoC.pdf
+页数：1；正文版本：未统一标注
+主题：Historical component compliance certificate; scope is specified capacitor samples.
+来源：AV1_Spec.zip::Spec/supercap/SuperCaps Certifications.zip::SuperCaps Certifications/MH62170-20170727-CoC.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/013-MH62170-20170727-CoC.pdf
+SHA256：d6a39c54c02fe3e33d0e980c0e7963917706568f411a4f14e46408b6c64de2c6
+
+AV1-014 014-MH62170-vol1-AuthorizationPage.pdf
+页数：3；正文版本：未统一标注
+主题：UL follow-up service authorization, not controller diagnostic rules.
+来源：AV1_Spec.zip::Spec/supercap/SuperCaps Certifications.zip::SuperCaps Certifications/MH62170-vol1-AuthorizationPage.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/014-MH62170-vol1-AuthorizationPage.pdf
+SHA256：b00700b9de08d9e5d8aecbe80490d8d1acdfbb44460ffd5e5e08d87ebfd72ea6
+
+AV1-015 015-9670W-16i_mech_outline.pdf
+页数：1；正文版本：未统一标注
+主题：9670W-16i mechanical outline; card-specific dimensions.
+来源：AV1_Spec.zip::Spec/9670W-16i_mech_outline.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/015-9670W-16i_mech_outline.pdf
+SHA256：6732735a730589279f7338000eab22c11df40cdb8371f951a2593c9d2654e53c
+
+AV1-016 016-96xx-MR-HBA-Tri-Mode-UG104.pdf
+页数：54；正文版本：2.0
+主题：96xx PCIe 4.0 SAS4xxx adapters, connectors, cabling and power; AV1 hardware scope.
+来源：AV1_Spec.zip::Spec/96xx-MR-HBA-Tri-Mode-UG104.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/016-96xx-MR-HBA-Tri-Mode-UG104.pdf
+SHA256：c248803337190cd747dd62b013d07ea2932c7439602688fcc8270d88ba431463
+
+AV1-017 017-Broadcom 9600 Avenger  HBAs SOV Jan 18 2023.pdf
+页数：3；正文版本：未统一标注
+主题：SAS4xxx statement of volatility; memory/storage roles differ from secure erase guarantees.
+来源：AV1_Spec.zip::Spec/Broadcom 9600 Avenger  HBAs SOV Jan 18 2023.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/017-Broadcom 9600 Avenger  HBAs SOV Jan 18 2023.pdf
+SHA256：8bdabefebd185bb8f5490bd6929985eee854d38544295579cf7ca3fb60d5a899
+
+AV1-018 018-Broadcom SAS9670W-16i Reliability Report.pdf
+页数：3；正文版本：未统一标注
+主题：9670W MTBF is a population estimate under stated assumptions, not remaining life of one card.
+来源：AV1_Spec.zip::Spec/Broadcom SAS9670W-16i Reliability Report.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/018-Broadcom SAS9670W-16i Reliability Report.pdf
+SHA256：c92117dbb87c82b8b0813257c2a2919a92d6ef7013c7c0dc5e96bb7dd27927d4
+
+AV1-019 019-CustomVPD-TriMode-AN100.pdf
+页数：17；正文版本：1.0
+主题：VPD PN/SN/MN/EC fields, length and checksum; no VPD programming authorized by reading.
+来源：AV1_Spec.zip::Spec/CustomVPD-TriMode-AN100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/019-CustomVPD-TriMode-AN100.pdf
+SHA256：a4a875952b72e9173034ea94db5bdcd02b0ea6377a6ef816b8aeb83d36939a32
+
+AV1-020 020-DCSG Adapter S&V Procedure.pdf
+页数：8；正文版本：未统一标注
+主题：Board shock/vibration qualification procedure, not a field failure verdict.
+来源：AV1_Spec.zip::Spec/DCSG Adapter S&V Procedure.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/020-DCSG Adapter S&V Procedure.pdf
+SHA256：98c7d6c33a25508b520bb7bbbc00573764f5f2a85f5ac962e37f9a825c86703c
+
+AV1-021 021-SAS4xxx-Controller-Differences-AN102.pdf
+页数：31；正文版本：1.2
+主题：SAS4xxx migration, AV1 personalities/profiles, PD/LD/enclosure identity and generation changes.
+来源：AV1_Spec.zip::Spec/SAS4xxx-Controller-Differences-AN102.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/021-SAS4xxx-Controller-Differences-AN102.pdf
+SHA256：b0c2077eeb64672490968ec6810443faea852a434d1a50f4d7ebc5ece35e17f1
+
+AV1-022 022-SAS4xxx-Debug-AN101.pdf
+页数：29；正文版本：1.1
+主题：SAS4xxx SnapDump triggers, conditional module contents, logging buffers and collection constraints.
+来源：AV1_Spec.zip::Spec/SAS4xxx-Debug-AN101.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/022-SAS4xxx-Debug-AN101.pdf
+SHA256：634f06c89bdefc12777a0e306ac6548730206f4d244645cb66514968e9de67f2
+
+AV1-023 023-SAS4xxx-EncReq-AN100.pdf
+页数：11；正文版本：1.0
+主题：ELI, CEI, DSN, SlotIndex and SES requirements; noncontiguous slot-number example is critical.
+来源：AV1_Spec.zip::Spec/SAS4xxx-EncReq-AN100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/023-SAS4xxx-EncReq-AN100.pdf
+SHA256：825f667cc4e136e24dff01afd989f32c1d1a6df5c8a316ae507b814241bcaa98
+
+AV1-024 024-SAS4xxx-KeyMan-AN100.pdf
+页数：10；正文版本：1.0
+主题：SAS4xxx BMC key-management flows; locked/foreign devices can reflect missing keys.
+来源：AV1_Spec.zip::Spec/SAS4xxx-KeyMan-AN100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/024-SAS4xxx-KeyMan-AN100.pdf
+SHA256：d2ca5b90ceb5637d0989dda05b0f3f08c2d2b9794581796491b0d9e686fb3240
+
+AV1-025 025-SAS4xxx-Secure-BT-Auth-AN102.pdf
+页数：12；正文版本：1.2；预发布/Advance Copy
+主题：Body covers SAS4xxx and SAS5xxxW secure boot; digest and certificate semantics are generation-specific.
+来源：AV1_Spec.zip::Spec/SAS4xxx-Secure-BT-Auth-AN102.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/025-SAS4xxx-Secure-BT-Auth-AN102.pdf
+SHA256：25d2a94f85ff964498d7f691392e19817f2d4ac32eac08e913cd4b3b2568f914
+
+AV1-026 026-SAS4xxx-SL8-OOB-AN105.pdf
+页数：97；正文版本：1.5
+主题：MR8/StoreLib8 compatibility, population bits, arrays, statuses, transport and SnapDump payloads.
+来源：AV1_Spec.zip::Spec/SAS4xxx-SL8-OOB-AN105.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/026-SAS4xxx-SL8-OOB-AN105.pdf
+SHA256：cfb28d281782b33b3a3b38b8e7390b676dbcc2f07e0998434551ce3e85db1bed
+
+AV1-027 027-SAS4xxx-SPDM-AN100.pdf
+页数：12；正文版本：1.0
+主题：SAS4xxx DeviceCert SPDM profile, negotiated capability and one-connection constraints.
+来源：AV1_Spec.zip::Spec/SAS4xxx-SPDM-AN100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/027-SAS4xxx-SPDM-AN100.pdf
+SHA256：f0c0e492d03d60a69de8adc8fc620eaeaf8d44f1bbfeabb3e20b2f77b847c571
+
+AV1-028 028-SAS95xx-96xx-SlotPwr-SP101.pdf
+页数：2；正文版本：未统一标注
+主题：SAS95xx/96xx slot power budget and Auto Port Enable; not a 9700 or 460 board power limit.
+来源：AV1_Spec.zip::Spec/SAS95xx-96xx-SlotPwr-SP101.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/028-SAS95xx-96xx-SlotPwr-SP101.pdf
+SHA256：847a0191332390a46fab7346233feb624f7f600c70f9021c3146b7b15a4f08eb
+
+AV1-029 029-StoreLib8-API-UG109.pdf
+页数：110；正文版本：1.9
+主题：Shared StoreLib8 v1.9 API, layered error status, OOB and debug logging.
+来源：AV1_Spec.zip::Spec/StoreLib8-API-UG109.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV1/029-StoreLib8-API-UG109.pdf
+SHA256：3b6c2ad71a860c869ed513d2e1ecc6f423a3270b7b868aca86841c6251ad352a
+
+AV2-030 030-9700-Series-PB100.pdf
+页数：2；正文版本：未统一标注
+主题：9700 ROC PCIe Gen5 product brief, integrated cache and SSD orientation.
+来源：AV2_SPEC.zip::Avenger 2/Spec/9700-Series-PB100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/030-9700-Series-PB100.pdf
+SHA256：316b8c13e558801e92336102d04d28b55f3f68aafeab2dc37302e749b7da0567
+
+AV2-031 031-9700-HWRAID5_LowLatency-WP100.pdf
+页数：5；正文版本：未统一标注
+主题：9700 RAID5 latency benchmark with explicit hardware/software and workload configuration.
+来源：AV2_SPEC.zip::Avenger 2/Spec/perf/9700-HWRAID5_LowLatency-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/031-9700-HWRAID5_LowLatency-WP100.pdf
+SHA256：7cc8f87e6a4dd2e4300b497c82ba7fef58e5ac5195606e4a8c5f0541201f4d29
+
+AV2-032 032-9700W-Perf-WP100.pdf
+页数：7；正文版本：未统一标注
+主题：SAS97xxW direct/switch-attached benchmark; cannot be used as a universal pass/fail target.
+来源：AV2_SPEC.zip::Avenger 2/Spec/perf/9700W-Perf-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/032-9700W-Perf-WP100.pdf
+SHA256：f106e9cbcf81c2bc4595b45acf0d2b26fdb1a18b810888dab315e448d79a0bdf
+
+AV2-033 033-SAS97xxW-NVMex1x2x4-WP100.pdf
+页数：6；正文版本：未统一标注
+主题：NVMe x1/x2/x4 direct-attach design tradeoffs; narrow links can be intentional.
+来源：AV2_SPEC.zip::Avenger 2/Spec/perf/SAS97xxW-NVMex1x2x4-WP100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/033-SAS97xxW-NVMex1x2x4-WP100.pdf
+SHA256：9487fe8546204ee6aeef0e0e71871b55b4d6d1a823fbae7c87427d300a31a1f7
+
+AV2-034 034-97xx-MR-HBA-Tri-Mode-UG101.pdf
+页数：34；正文版本：0.2；预发布/Advance Copy
+主题：97xx Gen5 adapter guide; ROC/IOC, connector/CSW groups, NVMe topologies and CVPM33.
+来源：AV2_SPEC.zip::Avenger 2/Spec/97xx-MR-HBA-Tri-Mode-UG101.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/034-97xx-MR-HBA-Tri-Mode-UG101.pdf
+SHA256：ed310dc44036ba7e10be996e33e17a3a225f3be5d5efcc76536e9d79db8d16cb
+
+AV2-035 035-MR8_Utility_UG.pdf
+页数：202；正文版本：1.1
+主题：Despite archive location, this is MR8-TM-SW-UG103 v1.1, October 2022, describing 9600 software.
+来源：AV2_SPEC.zip::Avenger 2/Spec/MR8_Utility_UG.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/035-MR8_Utility_UG.pdf
+SHA256：478d6aaaab81407504327e190f3f6accd0dbacc88ef7eb62f2572110747fb107
+
+AV2-036 036-SAS5xxx-SAS97xx-MPF-Cap-WP100 (1).pdf
+页数：18；正文版本：未统一标注
+主题：SAS5xxx/SAS97xx MPF roles, PCIe endpoint presentation and virtualized storage isolation.
+来源：AV2_SPEC.zip::Avenger 2/Spec/SAS5xxx-SAS97xx-MPF-Cap-WP100 (1).pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/036-SAS5xxx-SAS97xx-MPF-Cap-WP100 (1).pdf
+SHA256：968e65b70624e2c20b7db4aa6605748721399c206239379abfa1139c51ca02a4
+
+AV2-037 037-SAS5XXXW-MR976XX-AN100.pdf
+页数：16；正文版本：1.0；预发布/Advance Copy
+主题：Preliminary SAS5xxxW attestation, SKU-dependent DeviceCert/AliasCert and reference measurements.
+来源：AV2_SPEC.zip::Avenger 2/Spec/SAS5XXXW-MR976XX-AN100.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/037-SAS5XXXW-MR976XX-AN100.pdf
+SHA256：92e952447d49a3fee60caa19d5a2e89a75fb1aa66e801e753064f6edc891b6e8
+
+AV2-038 038-SAS5xxxxW-FW-Diff-AN101.pdf
+页数：19；正文版本：1.1；预发布/Advance Copy
+主题：Preliminary v1.1 AV1/AV2 differences, PF roles, visibility and firmware-specific MPF constraints.
+来源：AV2_SPEC.zip::Avenger 2/Spec/SAS5xxxxW-FW-Diff-AN101.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/038-SAS5xxxxW-FW-Diff-AN101.pdf
+SHA256：c70a9224bcbfe22f3094efd2085581cb80c9d13cd4940ce86ebdff66601b77f0
+
+AV2-039 039-StorCLI2-Intf-UG101.pdf
+页数：228；正文版本：1.2
+主题：Filename UG101; actual cover is StorCLI2-Intf-UG102 v1.2, November 2024. Includes SnapDump/events/PHY commands.
+来源：AV2_SPEC.zip::Avenger 2/Spec/StorCLI2-Intf-UG101.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/039-StorCLI2-Intf-UG101.pdf
+SHA256：e2c44440a0cf6d6e313108dfa4bf03b6029f9c955b8eabfb33acd7f240cbe334
+
+AV2-040 040-StoreLib8-API-UG109.pdf
+页数：110；正文版本：1.9
+主题：Byte-identical to AV1-029; archive placement does not make it a different API version.
+来源：AV2_SPEC.zip::Avenger 2/Spec/StoreLib8-API-UG109.pdf
+本地原文：/Users/mr.wen/Documents/Codex/2026-06-13/chatgpt/work/avenger-spec-study-20261016/sources/AV2/040-StoreLib8-API-UG109.pdf
+SHA256：3b6c2ad71a860c869ed513d2e1ecc6f423a3270b7b868aca86841c6251ad352a
+重复内容：AV1-029
+
+检索示例：
+python3 work/avenger-spec-study-20261016/search.py '"SlotIndex"' --doc AV1-023
+python3 work/avenger-spec-study-20261016/search.py '"Supervisor"' --generation AV2
+
+本轮产物是本地资料索引、学习笔记和候选规则清单；没有将候选规则作为线上运行时规则启用。

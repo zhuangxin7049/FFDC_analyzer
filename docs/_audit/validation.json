@@ -1,0 +1,62 @@
+{
+  "runtime": "3.14.5 (main, May 10 2026, 10:21:34) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "isolation": "Each suite used a disposable directory, no real configuration or credentials copied.",
+  "tests": [
+    {
+      "modules": [
+        "test_ffdc_chat",
+        "test_workspace_quality",
+        "test_workspace_ui",
+        "test_ffdc_jobs",
+        "test_ffdc_config"
+      ],
+      "exit_code": 0,
+      "output": "............................................../opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 502: 'Bad Gateway'>\n  _warnings.warn(self.warn_message, ResourceWarning)\n.................................\n----------------------------------------------------------------------\nRan 79 tests in 1.824s\n\nOK\n"
+    },
+    {
+      "modules": [
+        "test_jira_monitor_workflow"
+      ],
+      "exit_code": 1,
+      "output": "F.E.\n======================================================================\nERROR: test_mixed_sources_bad_attachment_and_all_davy_evidence (test_jira_monitor_workflow.JiraMonitorWorkflowTests.test_mixed_sources_bad_attachment_and_all_davy_evidence)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/var/folders/rp/67hyt7s1345_rhjm5f14k4w00000gn/T/ffdc-docgen-tests-79fscoch/test_jira_monitor_workflow.py\", line 121, in test_mixed_sources_bad_attachment_and_all_davy_evidence\n    result = self.app.JIRA_MONITOR_JOBS[\"job\"][\"issues\"][0]\n             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^\nIndexError: list index out of range\n\n======================================================================\nFAIL: test_davy_summary_uses_required_four_section_prompt (test_jira_monitor_workflow.JiraMonitorWorkflowTests.test_davy_summary_uses_required_four_section_prompt)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/var/folders/rp/67hyt7s1345_rhjm5f14k4w00000gn/T/ffdc-docgen-tests-79fscoch/test_jira_monitor_workflow.py\", line 145, in test_davy_summary_uses_required_four_section_prompt\n    self.assertIn(\"exactly four numbered sections\", captured[\"prompt\"])\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'exactly four numbered sections' not found in 'You are the senior reviewer for a Lenovo ThinkSystem RAID/storage defect investigation. Use the internal evidence brief and complete JIRA/FFDC JSON below to produce the final recommendation. Correct unsupported conclusions, stale conclusions, source mixing, chronology errors, and generic actions.\\n\\nReviewer checklist:\\n- First identify the reported issue domain from the title, Description, and Reproduce Steps. Reject FFDC evidence that does not match the same component, symptom, trigger, or time window.\\n- Reconstruct the order of Description/Reproduce Steps, FFDC observations, engineer comments, resolution signals, and closure fields. Recent explicit verification outweighs older symptoms.\\n- Distinguish four things: directly observed FFDC fact, engineer-reported fact, inference, and missing evidence. Never present an inference as a fact.\\n- Check whether the claimed cause explains the exact trigger and symptom. If it does not, downgrade confidence and state the unresolved gap.\\n- Check contradictions between FFDC, comments, and current JIRA status. Resolve them using timestamps and source authority, or state the contradiction explicitly.\\n- For Verify/Fixed/Resolved/Closed defects, inspect Root Cause Explanation, Solution Explanation, Build Fixed, resolution signals, and recent comments before proposing more debugging.\\n- If the current status is Verify, require reporter validation of the new fixed code/build with the original Reproduce Steps. If validation passes, the final action is to record the result and close the bug. Do not propose new hardware or firmware investigation unless a recent comment reports recurrence on that fixed code/build.\\n- If fix code/build made the issue disappear, prioritize minimal confirmation, recording the validated build, and closure. Do not restart unrelated hardware debugging.\\n- Apply the management workflow to the final recommendation: Open/Investigate within two workdays; Need Info within one workweek; Working requires a non-empty Action and weekly updates; Fixed requires a milestone-aligned Due Date; Verify waits for reporter validation and closure. High Severity or Blocking Priority requires explicit attention.\\n- Treat missing Project/s Affected, Platform/s Affected, Due Date, Reject Explanation, or duplicate-master documentation as workflow gaps only. They are not technical root-cause evidence.\\n- If no fix is proven, prioritize finding and proving the cause. Do not make firmware refresh, workaround, or hardware replacement the default action.\\n- Recommended actions and the single Next Debug Step must name the exact component/log/test/build and the result that proves or disproves the hypothesis.\\n- Remove advice that is not actionable by the RAID team or is unrelated to the reported symptom.\\n- Treat FFDC warnings as incidental unless a concrete component, symptom, or timestamp relationship connects them to the defect. For VROC, Intel RAID Controller, onboard NVMe, OS-driver, management-software, or utility defects, do not treat missing discrete RAID/HBA/EID inventory as evidence of the reported problem.\\n- If no relevant FFDC facts remain, write exactly \\'No FFDC evidence relevant to the reported issue.\\' in FFDC Evidence.\\n- Delete any diagnostic command, log path, error string, or build identifier that is not explicitly present in the evidence JSON. Precision must come from naming the known component, comparison, trigger, and pass/fail result, not from fabricated implementation details.\\n- Use only evidence in the supplied JSON and internal evidence brief. Do not invent details.\\n\\nOutput requirements:\\n- Return English Markdown with exactly the same nine numbered sections used by the draft: Finding; Current Progress Stage; FFDC Evidence; Engineer / JIRA Evidence; Davy Summary; Risk Level; Recommended Action; Root Cause Hypothesis; Next Debug Step.\\n- Keep FFDC evidence and Engineer/JIRA evidence in their own sections and preserve engineer names for comment evidence.\\n- Keep the final answer between 240 and 480 words when evidence is available.\\n- Do not use Owner, Why this action, or Done when labels.\\n- Do not output CLI commands, filesystem paths, code blocks, or example error messages unless they appear verbatim in the evidence JSON.\\n- Do not mention this review process or the internal evidence brief.\\n\\nInternal evidence brief:\\n1. Finding: test\\n2. Evidence Chain: test\\n3. Risk Level: Low\\n4. Recommended Action: test\\n\\nComplete JIRA and FFDC evidence JSON:\\n{\"key\": \"RAID-1\", \"reproduce_steps\": \"reset\"}'\n\n----------------------------------------------------------------------\nRan 4 tests in 0.095s\n\nFAILED (failures=1, errors=1)\n"
+    }
+  ],
+  "syntax": {
+    "app.py": {
+      "3.8": "syntax accepted; runtime API compatibility is a separate check",
+      "3.9": "syntax accepted; runtime API compatibility is a separate check",
+      "3.10": "syntax accepted; runtime API compatibility is a separate check",
+      "3.11": "syntax accepted; runtime API compatibility is a separate check",
+      "3.12": "syntax accepted; runtime API compatibility is a separate check",
+      "3.13": "syntax accepted; runtime API compatibility is a separate check",
+      "3.14": "syntax accepted; runtime API compatibility is a separate check"
+    },
+    "ffdc_chat.py": {
+      "3.8": "syntax accepted; runtime API compatibility is a separate check",
+      "3.9": "syntax accepted; runtime API compatibility is a separate check",
+      "3.10": "syntax accepted; runtime API compatibility is a separate check",
+      "3.11": "syntax accepted; runtime API compatibility is a separate check",
+      "3.12": "syntax accepted; runtime API compatibility is a separate check",
+      "3.13": "syntax accepted; runtime API compatibility is a separate check",
+      "3.14": "syntax accepted; runtime API compatibility is a separate check"
+    },
+    "workspace_analysis.py": {
+      "3.8": "syntax accepted; runtime API compatibility is a separate check",
+      "3.9": "syntax accepted; runtime API compatibility is a separate check",
+      "3.10": "syntax accepted; runtime API compatibility is a separate check",
+      "3.11": "syntax accepted; runtime API compatibility is a separate check",
+      "3.12": "syntax accepted; runtime API compatibility is a separate check",
+      "3.13": "syntax accepted; runtime API compatibility is a separate check",
+      "3.14": "syntax accepted; runtime API compatibility is a separate check"
+    },
+    "workspace_ui.py": {
+      "3.8": "syntax accepted; runtime API compatibility is a separate check",
+      "3.9": "syntax accepted; runtime API compatibility is a separate check",
+      "3.10": "syntax accepted; runtime API compatibility is a separate check",
+      "3.11": "syntax accepted; runtime API compatibility is a separate check",
+      "3.12": "syntax accepted; runtime API compatibility is a separate check",
+      "3.13": "syntax accepted; runtime API compatibility is a separate check",
+      "3.14": "syntax accepted; runtime API compatibility is a separate check"
+    }
+  }
+}

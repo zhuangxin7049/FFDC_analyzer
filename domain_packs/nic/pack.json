@@ -1,0 +1,136 @@
+{
+  "name": "nic",
+  "display_name": "Network / NIC",
+  "version": "1.1.0",
+  "question_keywords": [
+    "nic",
+    "network",
+    "ethernet",
+    "网卡",
+    "网络",
+    "丢包",
+    "link down",
+    "carrier",
+    "网口",
+    "mellanox",
+    "connectx",
+    "qlogic",
+    "emulex",
+    "bcm574",
+    "bcm575",
+    "bcm576",
+    "bnxt",
+    "e810",
+    "e823",
+    "x710",
+    "xxv710",
+    "Broadcom NIC"
+  ],
+  "file_patterns": [
+    "*dmesg*",
+    "*journal*",
+    "*syslog*",
+    "*messages*",
+    "*network*",
+    "*netdev*",
+    "*ethtool*",
+    "*lspci*",
+    "*dmdb_pci_dumper.txt",
+    "*io_devices.txt",
+    "*flash_history.log",
+    "*fm.log",
+    "*mctp_trace.log",
+    "*pldm.log",
+    "*bmu_fwrpm.log",
+    "*IBMU.log",
+    "*ibmu.log",
+    "*Lenovo_Support/*.log",
+    "*lenovo_support/*.log",
+    "*brcm-lnvgy_fw_nic_*.log",
+    "*brcm-lnvgy_fwutl_nic_*.log"
+  ],
+  "required_sources": [
+    "kernel or system event logs",
+    "NIC inventory and driver/firmware information",
+    "Device-associated PLDM or in-band update evidence when investigating an update outcome"
+  ],
+  "extractors": [
+    {
+      "field": "link_state",
+      "pattern": "\\blink(?:\\s+is)?\\s+(up|down)\\b",
+      "value_group": 1
+    },
+    {
+      "field": "interface",
+      "pattern": "\\b(en[opsx][A-Za-z0-9_.:-]*|eth[0-9]+|ib[0-9]+)\\b",
+      "value_group": 1
+    },
+    {
+      "field": "driver",
+      "pattern": "\\b(i40e|ice|igb|ixgbe|bnxt_en|mlx[45]_core|tg3|e1000e)\\b",
+      "value_group": 1
+    },
+    {
+      "field": "eid",
+      "pattern": "\\bEID\\s*[:=]?\\s*(0x[0-9a-f]+|[0-9]+)\\b",
+      "value_group": 1
+    },
+    {
+      "field": "tid",
+      "pattern": "\\bTID\\s*[:=]?\\s*(0x[0-9a-f]+|[0-9]+)\\b",
+      "value_group": 1
+    },
+    {
+      "field": "address_raw",
+      "pattern": "\\bAddr(?:ess)?\\s*[:=]?\\s*(0x[0-9a-f]+|[0-9a-f]{2,4}:[0-9a-f]{2}[:.][0-9a-f.]+)\\b",
+      "value_group": 1
+    },
+    {
+      "field": "inventory_link_state",
+      "pattern": "\\b(LinkDown|LinkUp)\\b",
+      "value_group": 1
+    },
+    {
+      "field": "mac",
+      "pattern": "\\b((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})\\b",
+      "value_group": 1
+    }
+  ],
+  "rules": [
+    {
+      "id": "nic.link_down",
+      "severity": "Warning",
+      "category": "Network",
+      "title": "NIC link interruption",
+      "message": "The log reports a NIC link or carrier interruption. Correlate the timestamp with switch-port, cable/transceiver, driver, and firmware evidence.",
+      "patterns": [
+        "(?=.*\\b(?:nic|ethernet|network|netdev|en[opsx][A-Za-z0-9_.:-]*|eth[0-9]+|ib[0-9]+|i40e|ice|igb|ixgbe|bnxt_en|mlx[45]_core|tg3|e1000e)\\b).*\\blink(?:\\s+is)?\\s+down\\b",
+        "\\bcarrier\\s+(?:lost|off)\\b",
+        "\\btx timeout\\b",
+        "(?=.*\\b(?:nic|ethernet|network|netdev|en[opsx][A-Za-z0-9_.:-]*|eth[0-9]+|ib[0-9]+|i40e|ice|igb|ixgbe|bnxt_en|mlx[45]_core|tg3|e1000e)\\b).*\\bwatchdog\\b",
+        "\\blink\\s+detected\\s*:\\s*no\\b"
+      ],
+      "exclude_patterns": [
+        "test",
+        "injection",
+        "\\b(?:LinkDown|LinkUp)\\b",
+        "\\b(?:CurrentSpeed|CurrentState)\\b"
+      ]
+    },
+    {
+      "id": "nic.driver_or_hardware_error",
+      "severity": "Critical",
+      "category": "Network",
+      "title": "NIC driver, firmware, or hardware error",
+      "message": "The log reports a NIC driver, firmware, hardware, or PCIe-related error. Confirm adapter identity, firmware level, PCIe health, and recurrence before concluding root cause.",
+      "patterns": [
+        "(?=.*\\b(?:nic|ethernet|network|netdev|en[opsx][A-Za-z0-9_.:-]*|eth[0-9]+|ib[0-9]+|i40e|ice|igb|ixgbe|bnxt_en|mlx[45]_core|tg3|e1000e)\\b).*\\b(?:firmware.{0,40}(?:error|fail|invalid)|hardware error|PCIe.{0,30}error|(?:fatal|failed))\\b"
+      ],
+      "exclude_patterns": [
+        "no error",
+        "0 errors",
+        "error handling"
+      ]
+    }
+  ]
+}

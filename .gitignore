@@ -1,0 +1,27 @@
+# Runtime data and local secrets
+uploads/
+reports/
+ffdc_cache/
+jira_ocr_cache/
+jira_attachment_cache/
+jira_monitor_jobs/
+current_status_summary/
+domain_drafts/
+usage_stats.json
+project_milestone_tracker.json
+api_key.txt
+.jira_similar_pat
+defect_review_config.json
+
+# Python and local tooling
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.coverage
+.DS_Store
+
+# Local deployment staging and backups
+deploy-staging/
+backups/
+server.log

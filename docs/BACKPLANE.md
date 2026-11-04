@@ -1,0 +1,69 @@
+# Backplane snapshot interpretation
+
+Release: `20261019-unknown1`. The user confirmed FW v1.06 as the latest project baseline on 2026-10-15. Prefer this PDF over the draft DOCX and older firmware specifications. Source: Lenovo Backplane Firmware Specification SP-000008 v1.06, sections 4, 5.2, 10.1.2, 10.2, Tables 39 and 55–63. The source PDFs are private reference material and are not distributed with the application.
+
+EGS/Genoa support uses a separate `egs_genoa` profile from the supplied
+`Lenovo EagleStream-Genoa Backplane SEP FW Specification v0.81`. APIDs `0x40`
+(SEP 4MW), `0x42` (SEP 8SW), `0x44` (SEP 4MEG), `0x45` (SEP 8EEG), and `0x49`
+(SEP 2MEG) are selected only with their documented Silicon IDs. Their status
+tables remain separate from SP-000008: SAS/SATA-only uses the `0x80/0x83`
+encoding, SAS/SATA/NVMe uses the v0.81 Table 52 encoding, and SEP 8EEG uses
+the v0.81 EDSFF `0xC2/0xC0/0x80` presence encoding. Invalid identity, checksum,
+power, initialization, or slot-capacity evidence remains unverified and cannot
+raise a drive or BP Type Fault conclusion.
+
+- VMD register 0x15 uses bits 0–3 for ports 0, 2, 4, 6. Upper reserved bits do not create ports.
+- Status identity is selected before decoding bytes. Modern APIDs BF/BB/BC/BE/C0/C1 select their own NVMe-only/AnyBay/mixed/EDSFF tables; Control 0x1A is management information and cannot override that choice. Legacy capability must be recognized; status byte values never select an alternate family or provide a default SAS layout for unknown identity.
+- Validated type-fault bit 2 populates bp_type_fault_slots and codes across supported layouts. Fault plus Fail/Rebuild/Locate combinations retain all flags, with separate Warning and Critical findings where both type and drive-fail bits are asserted. Invalid, wrong-layout or unknown states remain unverified. Boot/M.2 identity retains its separate status definitions.
+- SEP 4NV5 (APID BF) uses Table 62: 81 present, 83 empty, A1 fail, 84/86 type faults; rebuild/locate are bits 4/3. The table reserves bit 6, while a removal footnote uses C3. Bit-6-set captures retain their decoded observation with an explicit conflict limitation and cannot raise drive-failure conclusions.
+- EDSFF bit 7 is a presence signal, so validity comes from the extended status byte. Other supported modern layouts use the drive-status valid bit. Raw snapshots retain absolute byte offsets; gaps and conflicting reads do not become synthesized zeroes.
+- Modern status validation checks the header checksum, slot count, trailer, base status checksum and collected extended checksum, the communication valid bit and PGOOD. Extended status validity is required where the spec assigns it. AutoConfig must be enabled (BE). Return BA can mean restored/default configuration: it produces a configuration warning but does not discard otherwise valid current drive indications. Other incomplete/unknown configuration codes inhibit diagnostic flags.
+- Status slot count is per SEP, whereas Control[0x17] may describe the whole physical backplane. Trailer, checksum and extended bytes are not decoded as drives.
+- Invalid/partial snapshots expose reasons and raw observations. They do not establish drive fail, protocol fault or a healthy snapshot. A valid slot's drive-fail indication remains actionable even if another slot is invalid.
+- The report hides the generic Snapshot validation status line at the user's request. Specific validation reasons and raw register disclosures remain visible; API and AI consumers retain all validation fields.
+- An Unknown badge has an always-visible Unknown reasons block immediately below it. Equal causes are grouped across affected slots without truncating later causes. Explanations retain original status bytes and available APID/Silicon ID/communication context. Unmapped local indices remain distinct from physical bays, and reported ranges are labeled unverified where required. Unknown SEP Type or Protocol Support fields also explain the raw field with no verified mapping. Historical summaries lacking per-slot reasons explicitly request original register evidence instead of inventing a cause. This presentation does not change classification or rewrite saved reports.
+- The dedicated Backplane Firmware Update Evidence subsection is hidden at the user's request, including its firmware-status table, upgrade-event rows, explanatory text and firmware-collection limitations. Configuration, controller-to-bay mapping and mapping limitations remain visible. Backend collection, API, summary export and AI evidence retain the firmware data.
+- The configuration table displays collected VPD identity as well as identified SEP application names. Optional width, active protocol and UBM override columns are shown only when at least one SEP has collected/verified values; explicit zero/none values and collected invalid configuration bits remain visible. Legacy captures do not inherit modern register meanings. The mapping table hides controller_slot, eid and evidence columns while API/AI records retain them.
+- CIO failures and invalid signatures produce warnings about collection or identity. No firmware-crash root cause is inferred from these alone. Auto-config A0 is a supported NVMe-only mode and is not itself a fault. In supported tri-model/AnyBay layouts, C4 sets Drive Type Fault bit 2 (v1.06 Tables 59 and 60); classify it as a configuration Warning even with A0, retain the raw NVMe-only observation, and display BP Type Fault for affected bays. Do not infer cable or physical backplane failure. Invalid snapshots and unrelated status layouts never borrow this interpretation.
+- A drive-fail indication is a controller/VMD/SEP observation and must be matched to the drive and array. Drive-type/management faults are configuration warnings. Locate/rebuild are informational.
+- V1/V3 and SEP BRV4 boot layouts retain their existing decoding; modern layout checks are not silently applied to them. Supported V4/V5 APIDs are selected explicitly, or by recognized APID plus silicon identity in a full capture. Unrecognized profiles cannot borrow a SAS status table.
+- Historical reports are reinterpreted from retained register commands and bytes in memory. The independent marker is `backplane_details_version=6`. API, AI evidence and rendered checks use the same interpretation; reads never rewrite report.json or raw logs.
+- Internal/external storage evidence boundaries continue to apply. This release reads retained evidence only; it does not collect live registers or write hardware.
+
+Run `python3 -m unittest test_backplane_spec` and the existing NIC, workspace/JIRA, domain, SnapDump and release-helper suites. Specification-derived fixtures cover valid fault indications, invalid checksums, standby, initialization, unknown layouts, EDSFF presence bits, VMD, conflicts, per-slot/per-backplane isolation, new analysis and legacy API/AI/UI refresh. Release validation also reopens real retained V3/V4 register snapshots.
+
+## Configuration, mapping and firmware evidence
+
+The `backplane_analysis` report section pins SP-000008 v1.06 and keeps these distinctions:
+
+- Link configuration is decoded only for the applicable APID and a validated snapshot. Registers 0x48, 0x49 and 0x4A address EDSFF, AnyBay and NVMe-only configurations respectively. Configured widths never claim negotiated PCIe widths. Table 53 contains inconsistent hexadecimal examples versus bit 7; ambiguous captures keep raw width-bit observations and do not become definite cable-failure findings.
+- UBM register 0x45 is interpreted for SEP 4MV4/4MEV4 only. A deliberate override is informational. Configured management protocols and actually active protocols are separate; inactive traffic alone does not imply a broken bus.
+- Controller-to-bay mapping requires a unique controller/backplane serial or explicit backplane identity plus a reported SEP range for confirmation. Bay-only associations remain candidates. Unassigned drives keep the controller unresolved. Duplicate identities, contradictory references, overlapping SEP ranges, inconsistent slot totals and repeated HFC identities cannot create confirmed mappings. Boot and data-drive namespaces remain separate; virtual-backplane HFC wrap is allowed.
+- APID/silicon and explicit VPD names are checked against Tables 37 and 70. Identity disagreements request verification; no automatic firmware image selection is performed.
+- Control[0x1C]=0x5A explains the automatic BMC update block. One firmware snapshot never proves a transition. Bounded log excerpts preserve source and line; only a unique explicit BP/SEP plus a narrow firmware terminal result becomes a log-reported success/failure. Script, NIC/RAID/HBA and transport statements remain observations. Unmatched or multi-device lines remain unresolved.
+- The SEP debug command, response and length registers are decoded when captured. A ready response does not imply that a binary payload was collected or decoded. Missing logs and truncated excerpts remain explicit limitations.
+- API, report UI, system-summary export, Backplane Agent, workspace chat and collection-aware source paths use the same analysis. Reads preserve source logs and stored report.json files.
+
+Run `python3 -m unittest test_backplane_analysis test_backplane_spec` with the existing regression suite. New fixtures cover field applicability, contradictory spec examples, mapping ambiguity, M.2 isolation, valid configuration versus actual link state, bounded/private-path-safe log reads, explicit update correlation and old-report refresh.
+
+## Legacy PSoC applications
+
+APIDs 60-66 paired with their documented Silicon IDs use the earlier Storage Enclosure Processor Firmware Specification Rev 1.08 (2017), Tables 8/9, 14/15, 18-20 and 24. This is a separate legacy reference; it does not replace the V4/V5 SP-000008 v1.06 baseline. APID 63 is SEP 8S100 (1E083069), and APID 64 is SEP 2M (1E0A2069). Matching either byte order is allowed; unknown or mismatched identity remains unverified.
+
+For these applications, Status[01] describes this SEP's collected slot count. Control[16-1D] is reserved and does not provide modern whole-backplane totals, HFC, U.3 mode or development-firmware indicators. The starting bay comes from the Group ID in Control[0D] (groups of four), or Control[13] NVMe Bay ID for A0 mode. No missing SEP or slot is synthesized from a VPD summary.
+
+Legacy mixed layouts decode 80 as SAS/SATA present, 81 as NVMe present, 83 as empty, and 84/85/86 as type faults. They do not borrow the modern IFDET2/U.3 table. Validity requires the legacy header/payload checksum, trailer, PGOOD, communication valid bit, BE enable, documented configuration and per-application capacity. Control[0C] is the legacy self-test result and is not treated as a modern auto-configuration return code. Bit 6 is reserved. Type-fault and drive-fail bits remain independent, including combined flags, and old reports refresh through marker 6.
+
+## Retained-corpus count and range corrections (2026-10-19)
+
+Status[01] is a per-SEP count (v1.06 p94 Table 55). Control[17] describes the physical board total, and Control[18] is the SEP starting bay (pp87-88, sections 10.1.4/10.1.5). A board boundary must never truncate the raw observation list. All declared bytes remain in slot_observations with stable local_index; unavailable bytes retain their missing value. Bytes outside a collected board/next-SEP boundary have slot=null, explicit limitations, no diagnostic flags, and appear as unmapped Unknown observations. Zero capacity remains zero rather than falling back to the total.
+
+range_validation separates declared, mapped and unmapped counts. Analysis retains reported_slot_count and uses only mapped observations for its displayed bay range. An inconsistent boundary prevents topology confirmation. If another SEP control is absent, the last collected starting bay does not establish the physical board's base/end; the full boundary and topology remain unverified. Known per-SEP status observations remain tied to their explicitly reported starting bay.
+
+A missing control snapshot also retains every status byte at its local index; it cannot produce physical bay assignments, type-fault assertions or drive-failure assertions. An unavailable slot count remains missing. Unknown application/capability combinations retain an explicit unverified-layout reason rather than an apparently valid snapshot or a borrowed modern HFC mapping rule.
+
+Marker 6 refreshes historical backplane evidence in memory. When historical sep_info is empty, only a source path contained in that report's own extract directory can recover structured or text backplane evidence. This does not rewrite report.json, raw logs, other inventory, report format or existing AI output.
+
+The read-only corpus tools are work/collect_backplane_inputs.py and work/regress_backplane_corpus.py. The collector reads both supported structured names (backplanes.json, bpinventory.json), uses the normal preferred source, hashes source/report/archive files, preserves aliases and context variants, and never extracts archive members. The comparison gate requires exact hashed review receipts for changes, Unknown classifications and coverage gaps; invalid diagnostic assertions and lost valid observations cannot be waived. See the saved 2026-10-19 audit manifest, all-sep-results.csv, reviewed comparison, source-gap receipts and test_backplane_corpus_regression.py. Empty, damaged and unsupported inputs never count as hardware validation passes.
+
+Generic Drive Fail, Rebuilding and Locate badges trim comma-separated backend slot values before compaction. The corpus audit independently compares these displayed slot sets and BP Type Fault against the backend fields; a mismatch is a non-waivable release blocker. The original corpus had 23 such display mismatches; the final candidate has zero.
